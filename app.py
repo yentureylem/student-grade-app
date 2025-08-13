@@ -8,7 +8,7 @@ exam_file = st.file_uploader("Upload Exam Grades CSV", type=["csv"])
 seminar_file = st.file_uploader("Upload Seminar Grades CSV", type=["csv"])
 
 if exam_file and seminar_file:
-    # CSV dosyalarını oku
+    # CSV'leri oku
     exam_df = pd.read_csv(exam_file)
     seminar_df = pd.read_csv(seminar_file)
 
@@ -21,34 +21,29 @@ if exam_file and seminar_file:
         how="outer"
     )
 
-    # Rounded Grades sütunları
-    exam_round_col = "Rounded Grades_exam"
-    seminar_round_col = "Rounded Grades_seminar"
+    # Eğer First Name, Last Name, E Mail boşsa diğer dosyadan doldur
+    for col in ["First Name", "Last Name", "E Mail"]:
+        merged[col] = merged[f"{col}_exam"].combine_first(merged[f"{col}_seminar"])
 
-    if exam_round_col in merged.columns and seminar_round_col in merged.columns:
+    # Toplam not hesaplama
+    if "Rounded Exam Grades" in merged.columns and "Rounded Seminar Grades" in merged.columns:
         merged["Total Grade"] = (
-            0.7 * merged[exam_round_col] +
-            0.3 * merged[seminar_round_col]
+            0.7 * merged["Rounded Exam Grades"] +
+            0.3 * merged["Rounded Seminar Grades"]
         ).round(2)
     else:
-        st.error("Rounded Grades sütunları bulunamadı. Lütfen dosyaları kontrol edin.")
+        st.error("Lütfen dosyalarda 'Rounded Exam Grades' ve 'Rounded Seminar Grades' sütunları olduğundan emin olun.")
 
-    # Final tablo: gerekli sütunlar
+    # Final tablo
     final_df = merged[[
         "StudentID",
-        "First Name_exam",
-        "Last Name_exam",
-        "E Mail_exam",
-        exam_round_col,
-        seminar_round_col,
+        "First Name",
+        "Last Name",
+        "E Mail",
+        "Rounded Exam Grades",
+        "Rounded Seminar Grades",
         "Total Grade"
-    ]].rename(columns={
-        "First Name_exam": "First Name",
-        "Last Name_exam": "Last Name",
-        "E Mail_exam": "E Mail",
-        exam_round_col: "Exam Rounded Grade",
-        seminar_round_col: "Seminar Rounded Grade"
-    })
+    ]]
 
     st.subheader("Final Table")
     st.dataframe(final_df)
