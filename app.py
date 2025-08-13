@@ -146,7 +146,7 @@ if exam_file and seminar_file:
         with col2:
             st.metric("Average Grade", f"{final_df['Total Grade'].mean():.2f}")
         with col3:
-            st.metric("Lowest Grade", f"{final_df['Total Grade'].min():.2f}")
+            st.metric("Highest Grade", f"{final_df['Total Grade'].min():.2f}")
         
         # Final tablo
         st.subheader("📊 Final Table")
@@ -178,13 +178,60 @@ if exam_file and seminar_file:
         # Grade distribution chart
         st.subheader("📈 Grade Distribution")
         if len(final_df) > 0:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots()
-            ax.hist(final_df['Total Grade'], bins=20, edgecolor='black', alpha=0.7)
-            ax.set_xlabel('Total Grade')
-            ax.set_ylabel('Frequency')
-            ax.set_title('Grade Distribution')
-            st.pyplot(fig)
+            # Create histogram data
+            import numpy as np
+            grades = final_df['Total Grade'].dropna()
+            
+            # Calculate bins
+            min_grade = grades.min()
+            max_grade = grades.max()
+            bins = np.linspace(min_grade, max_grade, 21)  # 20 bins
+            hist, bin_edges = np.histogram(grades, bins=bins)
+            
+            # Create histogram chart data for Streamlit
+            chart_data = []
+            for i in range(len(hist)):
+                bin_center = (bin_edges[i] + bin_edges[i+1]) / 2
+                chart_data.append({
+                    'Grade Range': f"{bin_edges[i]:.1f}-{bin_edges[i+1]:.1f}",
+                    'Grade': bin_center,
+                    'Count': hist[i]
+                })
+            
+            hist_df = pd.DataFrame(chart_data)
+            
+            # Display bar chart
+            st.bar_chart(data=hist_df.set_index('Grade')['Count'])
+            
+            # Statistics table
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("**Grade Statistics:**")
+                stats_df = pd.DataFrame({
+                    'Statistic': ['Minimum', 'Maximum', 'Mean', 'Median', 'Std Dev'],
+                    'Value': [
+                        f"{grades.min():.2f}",
+                        f"{grades.max():.2f}",
+                        f"{grades.mean():.2f}",
+                        f"{grades.median():.2f}",
+                        f"{grades.std():.2f}"
+                    ]
+                })
+                st.dataframe(stats_df, use_container_width=True)
+            
+            with col2:
+                st.write("**Grade Ranges:**")
+                # Create grade ranges
+                grade_ranges = [
+                    ('A (0.0-1.0)', len(grades[(grades >= 1.0) & (grades <= 0.0)])),
+                    ('B (1.0-2.0)', len(grades[(grades >= 2.0) & (grades < 1.0)])),
+                    ('C (2.0-3.0)', len(grades[(grades >= 3.0) & (grades < 2.0)])),
+                    ('D (3.0-4.0)', len(grades[(grades >= 4.0) & (grades < 3.0)])),
+                    ('F (5.0)', len(grades[grades < 4.0]))
+                ]
+                
+                ranges_df = pd.DataFrame(grade_ranges, columns=['Grade', 'Count'])
+                st.dataframe(ranges_df, use_container_width=True)
         
     except Exception as e:
         st.error(f"❌ An error occurred: {str(e)}")
