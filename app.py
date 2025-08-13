@@ -4,9 +4,10 @@ import pandas as pd
 st.set_page_config(page_title="Student Grade Calculator", layout="wide")
 
 st.title("🎓 Student Grade Calculator")
-st.markdown("This app calculates students' final grades using 70% exam and 30% seminar **rounded grades**.")
+st.markdown("This application calculates students' final grades by combining exam (70%) and seminar (30%) grades using the 'Rounded Grades' columns.")
 
-# Upload files
+# Upload section
+st.header("1️⃣ Upload Files")
 exam_file = st.file_uploader("📄 Upload Exam Grades CSV File", type=["csv"], key="exam")
 seminar_file = st.file_uploader("📄 Upload Seminar Grades CSV File", type=["csv"], key="seminar")
 
@@ -14,44 +15,47 @@ if exam_file and seminar_file:
     exam_df = pd.read_csv(exam_file)
     seminar_df = pd.read_csv(seminar_file)
 
-    # Find common ID column
-    possible_id_cols = ["StudentID", "ID number", "ID", "id", "Id Number"]
-    common_id_col = None
-    for col in possible_id_cols:
-        if col in exam_df.columns and col in seminar_df.columns:
-            common_id_col = col
-            break
+    # Rename columns for clarity
+    exam_df = exam_df.rename(columns={"Rounded Grades": "Rounded Exam Grade"})
+    seminar_df = seminar_df.rename(columns={"Rounded Grades": "Rounded Seminar Grade"})
 
-    if not common_id_col:
-        st.error("❌ No common ID column found.")
-    else:
-        # Merge
-        merged_df = pd.merge(exam_df, seminar_df, on=common_id_col, how="inner")
+    # Merge on StudentID (inner join)
+    merged_df = pd.merge(exam_df, seminar_df, on="StudentID", suffixes=("_exam", "_seminar"))
 
-        # Find Rounded Grade columns in merged file
-        exam_round_col = [col for col in merged_df.columns if "Rounded" in col and col.endswith("_x")][0]
-        seminar_round_col = [col for col in merged_df.columns if "Rounded" in col and col.endswith("_y")][0]
+    # Calculate Total Grade
+    merged_df["Total Grade"] = (0.7 * merged_df["Rounded Exam Grade"] +
+                                0.3 * merged_df["Rounded Seminar Grade"])
 
-        # Calculate final grade
-        merged_df["Final Grade"] = (
-            0.7 * merged_df[exam_round_col] +
-            0.3 * merged_df[seminar_round_col]
-        ).round(2)
+    # Reorder columns for final table
+    final_df = merged_df[[
+        "StudentID",
+        "First name",
+        "Last name",
+        "Email",
+        "Rounded Exam Grade",
+        "Rounded Seminar Grade",
+        "Total Grade"
+    ]]
 
-        # Search
-        st.subheader("🔍 Search Student by ID")
-        search_id = st.text_input("Enter StudentID to search:")
-        if search_id:
-            result = merged_df[merged_df[common_id_col].astype(str) == str(search_id)]
-            if not result.empty:
-                st.dataframe(result)
-            else:
-                st.warning("No student found with this ID.")
+    # Show Final Table
+    st.subheader("📌 Final Grades")
+    st.dataframe(final_df)
 
-        # Show final table
-        st.subheader("📌 Final Grades Table")
-        st.dataframe(merged_df[[common_id_col, exam_round_col, seminar_round_col, "Final Grade"]])
+    # Search student by ID
+    st.subheader("🔍 Search Student by ID")
+    search_id = st.text_input("Enter StudentID to search:")
+    if st.button("Search"):
+        result_df = final_df[final_df["StudentID"].astype(str) == search_id.strip()]
+        if not result_df.empty:
+            st.write(result_df)
+        else:
+            st.error("❌ No student found with this ID.")
 
-        # Download
-        csv = merged_df[[common_id_col, exam_round_col, seminar_round_col, "Final Grade"]].to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Download Final Grades (CSV)", data=csv, file_name="final_grades.csv", mime="text/csv")
+    # Download button
+    csv = final_df.to_csv(index=False).encode("utf-8")
+    st.download_button("⬇️ Download Final Grades (CSV)",
+                       data=csv,
+                       file_name="final_grades.csv",
+                       mime="text/csv")
+else:
+    st.info("Please upload both the exam and seminar CSV files to proceed.")
