@@ -1,54 +1,64 @@
 import streamlit as st
 import pandas as pd
 
-st.title("Student Grades App")
+st.title("Student Grade Calculator")
 
-# Dosyaları yükle
+# CSV dosyalarını yükleme
 exam_file = st.file_uploader("Upload Exam Grades CSV", type=["csv"])
 seminar_file = st.file_uploader("Upload Seminar Grades CSV", type=["csv"])
 
 if exam_file and seminar_file:
+    # CSV dosyalarını oku
     exam_df = pd.read_csv(exam_file)
-    sem_df = pd.read_csv(seminar_file)
+    seminar_df = pd.read_csv(seminar_file)
 
-    # Merge
-    merged = pd.merge(exam_df, sem_df, on="StudentID", how="inner", suffixes=("_exam", "_seminar"))
+    # Merge: StudentID üzerinden birleştirme
+    merged = pd.merge(
+        exam_df,
+        seminar_df,
+        on="StudentID",
+        suffixes=("_exam", "_seminar"),
+        how="outer"
+    )
 
-    # Eksik isim/email doldurma
-    for col in ["First Name", "Last Name", "E Mail"]:
-        exam_col = f"{col}_exam" if f"{col}_exam" in merged.columns else col
-        seminar_col = f"{col}_seminar" if f"{col}_seminar" in merged.columns else col
-        merged[col] = merged.get(exam_col).combine_first(merged.get(seminar_col))
+    # Rounded Grades sütunları
+    exam_round_col = "Rounded Grades_exam"
+    seminar_round_col = "Rounded Grades_seminar"
 
-    # Hesaplama (Rounded Grades üzerinden)
-    exam_round_col = "Rounded Grade_exam" if "Rounded Grade_exam" in merged.columns else "Rounded Grade_x"
-    seminar_round_col = "Rounded Grade_seminar" if "Rounded Grade_seminar" in merged.columns else "Rounded Grade_y"
+    if exam_round_col in merged.columns and seminar_round_col in merged.columns:
+        merged["Total Grade"] = (
+            0.7 * merged[exam_round_col] +
+            0.3 * merged[seminar_round_col]
+        ).round(2)
+    else:
+        st.error("Rounded Grades sütunları bulunamadı. Lütfen dosyaları kontrol edin.")
 
-    merged["Total Grade"] = (0.7 * merged[exam_round_col] + 0.3 * merged[seminar_round_col]).round(2)
-
-    # Final tablo
+    # Final tablo: gerekli sütunlar
     final_df = merged[[
         "StudentID",
-        "First Name",
-        "Last Name",
-        "E Mail",
+        "First Name_exam",
+        "Last Name_exam",
+        "E Mail_exam",
         exam_round_col,
         seminar_round_col,
         "Total Grade"
     ]].rename(columns={
-        exam_round_col: "Rounded Exam Grade",
-        seminar_round_col: "Rounded Seminar Grade"
+        "First Name_exam": "First Name",
+        "Last Name_exam": "Last Name",
+        "E Mail_exam": "E Mail",
+        exam_round_col: "Exam Rounded Grade",
+        seminar_round_col: "Seminar Rounded Grade"
     })
 
-    st.subheader("Final Grades Table")
+    st.subheader("Final Table")
     st.dataframe(final_df)
 
     # Search by StudentID
-    st.subheader("Search for a Student")
-    search_id = st.text_input("Enter StudentID")
+    search_id = st.text_input("Search for StudentID")
     if st.button("Search"):
-        result = final_df[final_df["StudentID"].astype(str) == str(search_id)]
+        result = final_df[final_df["StudentID"].astype(str) == search_id.strip()]
         if not result.empty:
-            st.write(result)
+            st.write("Student Found:")
+            st.dataframe(result)
         else:
             st.warning("No student found with this ID.")
