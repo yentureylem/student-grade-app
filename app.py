@@ -2,71 +2,82 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="Student Grade Calculator", layout="wide")
-
 st.title("🎓 Student Grade Calculator")
 
-# Upload files
-exam_file = st.file_uploader("📄 Upload Exam Grades CSV File", type=["csv"], key="exam")
-seminar_file = st.file_uploader("📄 Upload Seminar Grades CSV File", type=["csv"], key="seminar")
+st.markdown("Final grade = **70% Exam (Rounded)** + **30% Seminar (Rounded)**")
 
-if exam_file and seminar_file:
-    exam_df = pd.read_csv(exam_file)
-    seminar_df = pd.read_csv(seminar_file)
+# ---- Helper: ID normalize ----
+def normalize_id(df):
+    df = df.copy()
+    df["StudentID"] = df["StudentID"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+    df = df[df["StudentID"].ne("") & df["StudentID"].notna()]
+    return df
 
-    # Remove empty StudentID rows
-    exam_df = exam_df[exam_df["StudentID"].notna()]
-    seminar_df = seminar_df[seminar_df["StudentID"].notna()]
+# ---- Upload ----
+st.header("1️⃣ Upload Files")
+exam_file = st.file_uploader("📄 Upload Exam Grades CSV", type=["csv"], key="exam")
+seminar_file = st.file_uploader("📄 Upload Seminar Grades CSV", type=["csv"], key="seminar")
 
-    # Rename grade columns
-    exam_df = exam_df.rename(columns={"Rounded Grades": "Rounded Exam Grade"})
-    seminar_df = seminar_df.rename(columns={"Rounded Grades": "Rounded Seminar Grade"})
+if not (exam_file and seminar_file):
+    st.info("Both CSVs required.")
+    st.stop()
 
-    # Merge only on common StudentIDs
-    merged_df = pd.merge(exam_df, seminar_df, on="StudentID", how="inner", suffixes=("_exam", "_seminar"))
+exam_df = pd.read_csv(exam_file)
+sem_df = pd.read_csv(seminar_file)
 
-    # Select name/email from exam file (you can change to seminar if needed)
-    name_cols = ["First name_exam", "Last name_exam", "Email_exam"]
-    for col in name_cols:
-        if col not in merged_df.columns:
-            merged_df[col] = ""
+# normalize IDs
+exam_df = normalize_id(exam_df)
+sem_df = normalize_id(sem_df)
 
-    # Calculate total grade
-    merged_df["Total Grade"] = (
-        0.7 * merged_df["Rounded Exam Grade"] +
-        0.3 * merged_df["Rounded Seminar Grade"]
-    ).round(2)
+# ---- Merge ----
+merged = pd.merge(exam_df, sem_df, on="StudentID", how="inner", suffixes=("_exam", "_seminar"))
 
-    # Final table
-    final_df = merged_df[[
-        "StudentID",
-        "First name_exam",
-        "Last name_exam",
-        "Email_exam",
-        "Rounded Exam Grade",
-        "Rounded Seminar Grade",
-        "Total Grade"
-    ]].rename(columns={
-        "First name_exam": "First name",
-        "Last name_exam": "Last name",
-        "Email_exam": "Email"
-    })
+# isim ve e-posta doldurma (boşsa diğer dosyadan al)
+for col in ["First Name", "Last Name", "E Mail"]:
+    merged[col] = merged[f"{col}_exam"].combine_first(merged[f"{col}_seminar"])
 
-    st.subheader("📌 Final Grades")
-    st.dataframe(final_df)
+# ---- Rounded columns ----
+exam_round = "Rounded Exam Grade"
+seminar_round = "Rounded Seminar Grade"
 
-    # Search by StudentID
-    st.subheader("🔍 Search Student by ID")
-    search_id = st.text_input("Enter StudentID to search:")
-    if st.button("Search"):
-        result_df = final_df[final_df["StudentID"].astype(str) == search_id.strip()]
-        if not result_df.empty:
-            st.write(result_df)
+# varsa orijinal kolon adlarını bul
+for c in merged.columns:
+    if "rounded" in c.lower() and "exam" in c.lower():
+        exam_round = c
+    if "rounded" in c.lower() and "seminar" in c.lower():
+        seminar_round = c
+
+# ---- Final calculation ----
+merged["Rounded Exam Grade"] = pd.to_numeric(merged[exam_round], errors="coerce")
+merged["Rounded Seminar Grade"] = pd.to_numeric(merged[seminar_round], errors="coerce")
+merged["Total Grade"] = (0.7 * merged["Rounded Exam Grade"] + 0.3 * merged["Rounded Seminar Grade"]).round(2)
+
+final_df = merged[[
+    "StudentID", "First Name", "Last Name", "E Mail",
+    "Rounded Exam Grade", "Rounded Seminar Grade", "Total Grade"
+]]
+
+st.subheader("📌 Final Table")
+st.dataframe(final_df, use_container_width=True)
+
+# ---- Search Form ----
+st.subheader("🔍 Search by StudentID")
+with st.form("search_form", clear_on_submit=False):
+    q = st.text_input("Enter StudentID")
+    submitted = st.form_submit_button("Search")
+    if submitted:
+        q_norm = str(q).strip().replace(".0", "")
+        found = final_df[final_df["StudentID"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True) == q_norm]
+        if found.empty:
+            st.warning("No student found with this ID.")
         else:
-            st.error("❌ No student found with this ID.")
+            st.dataframe(found, use_container_width=True)
 
-    # Download CSV
-    csv = final_df.to_csv(index=False).encode("utf-8")
-    st.download_button("⬇️ Download Final Grades (CSV)", data=csv, file_name="final_grades.csv", mime="text/csv")
-
-else:
-    st.info("Please upload both the exam and seminar CSV files to proceed.")
+# ---- Download ----
+csv = final_df.to_csv(index=False).encode("utf-8")
+st.download_button(
+    "⬇️ Download Final Grades (CSV)",
+    data=csv,
+    file_name="final_grades.csv",
+    mime="text/csv"
+)
