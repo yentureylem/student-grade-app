@@ -13,11 +13,11 @@ if exam_file and seminar_file:
         exam_df = pd.read_csv(exam_file)
         seminar_df = pd.read_csv(seminar_file)
         
-        # Debug: Dosyaların sütunlarını göster
-        with st.expander("Debug: Dosya Sütunları"):
-            st.write("**Exam dosyası sütunları:**")
+        # Debug: Show file columns
+        with st.expander("Debug: File Columns"):
+            st.write("**Exam file columns:**")
             st.write(exam_df.columns.tolist())
-            st.write("**Seminar dosyası sütunları:**")
+            st.write("**Seminar file columns:**")
             st.write(seminar_df.columns.tolist())
         
         # Gerekli sütunları kontrol et
@@ -28,11 +28,11 @@ if exam_file and seminar_file:
         missing_seminar = [col for col in required_cols_seminar if col not in seminar_df.columns]
         
         if missing_exam or missing_seminar:
-            st.error("Eksik sütunlar tespit edildi:")
+            st.error("Missing columns detected:")
             if missing_exam:
-                st.error(f"Exam dosyasında eksik: {missing_exam}")
+                st.error(f"Missing in exam file: {missing_exam}")
             if missing_seminar:
-                st.error(f"Seminar dosyasında eksik: {missing_seminar}")
+                st.error(f"Missing in seminar file: {missing_seminar}")
             st.stop()
         
         # StudentID sütununu temizle (boşlukları kaldır, string'e çevir)
@@ -53,12 +53,24 @@ if exam_file and seminar_file:
         )
         
         if merged.empty:
-            st.error("İki dosyada ortak StudentID bulunamadı. Lütfen dosyalarınızı kontrol edin.")
+            st.error("No common StudentID found in both files. Please check your files.")
             st.stop()
         
-        # Kişisel bilgileri birleştir (önce exam'den al, yoksa seminar'den)
-        info_cols = ["First Name", "Last Name", "E Mail"]
-        for col in info_cols:
+        # Combine personal information (prioritize exam file, fallback to seminar file)
+        info_cols = ["First Name", "Last Name", "E Mail", "Email", "E-Mail", "E-mail", "email"]
+        
+        # Create a mapping for email columns
+        email_col = None
+        for col in info_cols[3:]:  # Check email variations
+            if col in exam_df.columns:
+                email_col = col
+                break
+            elif col in seminar_df.columns:
+                email_col = col
+                break
+        
+        # Process basic info columns
+        for col in ["First Name", "Last Name"]:
             if f"{col}_exam" in merged.columns and f"{col}_seminar" in merged.columns:
                 merged[col] = merged[f"{col}_exam"].combine_first(merged[f"{col}_seminar"])
             elif f"{col}_exam" in merged.columns:
@@ -66,22 +78,35 @@ if exam_file and seminar_file:
             elif f"{col}_seminar" in merged.columns:
                 merged[col] = merged[f"{col}_seminar"]
             else:
-                merged[col] = "N/A"  # Hiçbiri yoksa N/A koy
+                merged[col] = "N/A"
         
-        # Numeric sütunları kontrol et ve dönüştür
+        # Handle email column specifically
+        if email_col:
+            if f"{email_col}_exam" in merged.columns and f"{email_col}_seminar" in merged.columns:
+                merged["E Mail"] = merged[f"{email_col}_exam"].combine_first(merged[f"{email_col}_seminar"])
+            elif f"{email_col}_exam" in merged.columns:
+                merged["E Mail"] = merged[f"{email_col}_exam"]
+            elif f"{email_col}_seminar" in merged.columns:
+                merged["E Mail"] = merged[f"{email_col}_seminar"]
+            else:
+                merged["E Mail"] = "N/A"
+        else:
+            merged["E Mail"] = "N/A"
+        
+        # Convert to numeric and check
         try:
             merged["Rounded Exam Grades"] = pd.to_numeric(merged["Rounded Exam Grades"], errors='coerce')
             merged["Rounded Seminar Grades"] = pd.to_numeric(merged["Rounded Seminar Grades"], errors='coerce')
         except Exception as e:
-            st.error(f"Not değerleri sayısal formata çevrilemedi: {e}")
+            st.error(f"Could not convert grade values to numeric format: {e}")
             st.stop()
         
-        # NaN değerlerini kontrol et
+        # Check for NaN values
         nan_exam = merged["Rounded Exam Grades"].isna().sum()
         nan_seminar = merged["Rounded Seminar Grades"].isna().sum()
         
         if nan_exam > 0 or nan_seminar > 0:
-            st.warning(f"Uyarı: {nan_exam} exam notu ve {nan_seminar} seminer notu eksik/geçersiz")
+            st.warning(f"Warning: {nan_exam} exam grades and {nan_seminar} seminar grades are missing/invalid")
         
         # Toplam not hesaplama (70% exam + 30% seminar)
         merged["Total Grade"] = (
@@ -89,7 +114,7 @@ if exam_file and seminar_file:
             0.3 * merged["Rounded Seminar Grades"]
         ).round(2)
         
-        # Final tabloyu oluştur
+        # Create final table
         final_columns = [
             "StudentID",
             "First Name", 
@@ -100,58 +125,58 @@ if exam_file and seminar_file:
             "Total Grade"
         ]
         
-        # Sadece mevcut sütunları al
+        # Get only available columns
         available_columns = [col for col in final_columns if col in merged.columns]
         final_df = merged[available_columns].copy()
         
-        # Sütun isimlerini düzenle
+        # Rename columns
         final_df = final_df.rename(columns={
             "StudentID": "ID Number",
             "Rounded Exam Grades": "Exam Grade",
             "Rounded Seminar Grades": "Seminar Grade"
         })
         
-        # Sonuçları göster
-        st.success(f"✅ {len(final_df)} öğrenci başarıyla işlendi")
+        # Show results
+        st.success(f"✅ {len(final_df)} students processed successfully")
         
-        # İstatistikler
+        # Statistics
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Toplam Öğrenci", len(final_df))
+            st.metric("Total Students", len(final_df))
         with col2:
-            st.metric("Ortalama Not", f"{final_df['Total Grade'].mean():.2f}")
+            st.metric("Average Grade", f"{final_df['Total Grade'].mean():.2f}")
         with col3:
-            st.metric("En Yüksek Not", f"{final_df['Total Grade'].max():.2f}")
+            st.metric("Lowest Grade", f"{final_df['Total Grade'].min():.2f}")
         
         # Final tablo
         st.subheader("📊 Final Table")
         st.dataframe(final_df, use_container_width=True)
         
-        # CSV indirme seçeneği
+        # CSV download option
         csv = final_df.to_csv(index=False)
         st.download_button(
-            label="📥 Final Tabloyu CSV olarak İndir",
+            label="📥 Download Final Table as CSV",
             data=csv,
             file_name="final_grades.csv",
             mime="text/csv"
         )
         
-        # Öğrenci arama
-        st.subheader("🔍 Öğrenci Arama")
-        search_id = st.text_input("StudentID girin:")
+        # Student search
+        st.subheader("🔍 Student Search")
+        search_id = st.text_input("Enter StudentID:")
         
         if search_id:
-            # Arama yap
+            # Search
             result = final_df[final_df["ID Number"].astype(str).str.contains(search_id.strip(), case=False, na=False)]
             
             if not result.empty:
-                st.success(f"🎯 {len(result)} öğrenci bulundu:")
+                st.success(f"🎯 {len(result)} student(s) found:")
                 st.dataframe(result, use_container_width=True)
             else:
-                st.warning("❌ Bu ID ile öğrenci bulunamadı.")
+                st.warning("❌ No student found with this ID.")
         
-        # Not dağılımı grafiği
-        st.subheader("📈 Not Dağılımı")
+        # Grade distribution chart
+        st.subheader("📈 Grade Distribution")
         if len(final_df) > 0:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots()
@@ -162,12 +187,12 @@ if exam_file and seminar_file:
             st.pyplot(fig)
         
     except Exception as e:
-        st.error(f"❌ Bir hata oluştu: {str(e)}")
-        st.error("Lütfen dosyalarınızın formatını kontrol edin.")
+        st.error(f"❌ An error occurred: {str(e)}")
+        st.error("Please check the format of your files.")
         
-        # Hata detayları
-        with st.expander("Hata Detayları"):
+        # Error details
+        with st.expander("Error Details"):
             st.exception(e)
 
 else:
-    st.info("👆 Lütfen hem Exam hem de Seminar CSV dosyalarını yükleyin.")
+    st.info("👆 Please upload both Exam and Seminar CSV files.")
