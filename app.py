@@ -19,6 +19,22 @@ if exam_file and seminar_file:
             st.write(exam_df.columns.tolist())
             st.write("**Seminar file columns:**")
             st.write(seminar_df.columns.tolist())
+            
+            # Check for email columns specifically
+            st.write("**Email column detection:**")
+            email_variations = ["E Mail", "Email", "E-Mail", "E-mail", "email", "EMAIL", "e-mail", "e_mail", "E_Mail"]
+            found_emails = []
+            for var in email_variations:
+                if var in exam_df.columns:
+                    found_emails.append(f"'{var}' found in EXAM file")
+                if var in seminar_df.columns:
+                    found_emails.append(f"'{var}' found in SEMINAR file")
+            
+            if found_emails:
+                for email_info in found_emails:
+                    st.write(f"✅ {email_info}")
+            else:
+                st.write("❌ No email columns found in either file")
         
         # Gerekli sütunları kontrol et
         required_cols_exam = ["StudentID", "Rounded Exam Grades"]
@@ -56,20 +72,8 @@ if exam_file and seminar_file:
             st.error("No common StudentID found in both files. Please check your files.")
             st.stop()
         
-        # Combine personal information (prioritize exam file, fallback to seminar file)
-        info_cols = ["First Name", "Last Name", "E Mail", "Email", "E-Mail", "E-mail", "email"]
-        
-        # Create a mapping for email columns
-        email_col = None
-        for col in info_cols[3:]:  # Check email variations
-            if col in exam_df.columns:
-                email_col = col
-                break
-            elif col in seminar_df.columns:
-                email_col = col
-                break
-        
-        # Process basic info columns
+        # Combine personal information (prioritize exam file)
+        # Handle basic info columns
         for col in ["First Name", "Last Name"]:
             if f"{col}_exam" in merged.columns and f"{col}_seminar" in merged.columns:
                 merged[col] = merged[f"{col}_exam"].combine_first(merged[f"{col}_seminar"])
@@ -80,18 +84,31 @@ if exam_file and seminar_file:
             else:
                 merged[col] = "N/A"
         
-        # Handle email column specifically
-        if email_col:
-            if f"{email_col}_exam" in merged.columns and f"{email_col}_seminar" in merged.columns:
-                merged["E Mail"] = merged[f"{email_col}_exam"].combine_first(merged[f"{email_col}_seminar"])
-            elif f"{email_col}_exam" in merged.columns:
-                merged["E Mail"] = merged[f"{email_col}_exam"]
-            elif f"{email_col}_seminar" in merged.columns:
-                merged["E Mail"] = merged[f"{email_col}_seminar"]
-            else:
-                merged["E Mail"] = "N/A"
-        else:
+        # Handle email column - prioritize exam file and check all variations
+        email_variations = ["E Mail", "Email", "E-Mail", "E-mail", "email", "EMAIL", "e-mail", "e_mail", "E_Mail"]
+        email_found = False
+        
+        # First try to get from exam file
+        for email_var in email_variations:
+            if f"{email_var}_exam" in merged.columns:
+                merged["E Mail"] = merged[f"{email_var}_exam"]
+                email_found = True
+                st.write(f"📧 Email taken from exam file column: '{email_var}'")
+                break
+        
+        # If not found in exam, try seminar file
+        if not email_found:
+            for email_var in email_variations:
+                if f"{email_var}_seminar" in merged.columns:
+                    merged["E Mail"] = merged[f"{email_var}_seminar"]
+                    email_found = True
+                    st.write(f"📧 Email taken from seminar file column: '{email_var}'")
+                    break
+        
+        # If still not found, set to N/A
+        if not email_found:
             merged["E Mail"] = "N/A"
+            st.warning("⚠️ No email column found in either file")
         
         # Convert to numeric and check
         try:
@@ -146,7 +163,7 @@ if exam_file and seminar_file:
         with col2:
             st.metric("Average Grade", f"{final_df['Total Grade'].mean():.2f}")
         with col3:
-            st.metric("Highest Grade", f"{final_df['Total Grade'].min():.2f}")
+            st.metric("Lowest Grade", f"{final_df['Total Grade'].min():.2f}")
         
         # Final tablo
         st.subheader("📊 Final Table")
@@ -223,11 +240,11 @@ if exam_file and seminar_file:
                 st.write("**Grade Ranges:**")
                 # Create grade ranges
                 grade_ranges = [
-                    ('A (0.0-1.0)', len(grades[(grades >= 1.0) & (grades <= 0.0)])),
-                    ('B (1.0-2.0)', len(grades[(grades >= 2.0) & (grades < 1.0)])),
-                    ('C (2.0-3.0)', len(grades[(grades >= 3.0) & (grades < 2.0)])),
-                    ('D (3.0-4.0)', len(grades[(grades >= 4.0) & (grades < 3.0)])),
-                    ('F (5.0)', len(grades[grades < 4.0]))
+                    ('A (90-100)', len(grades[(grades >= 90) & (grades <= 100)])),
+                    ('B (80-89)', len(grades[(grades >= 80) & (grades < 90)])),
+                    ('C (70-79)', len(grades[(grades >= 70) & (grades < 80)])),
+                    ('D (60-69)', len(grades[(grades >= 60) & (grades < 70)])),
+                    ('F (0-59)', len(grades[grades < 60]))
                 ]
                 
                 ranges_df = pd.DataFrame(grade_ranges, columns=['Grade', 'Count'])
