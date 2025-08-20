@@ -13,12 +13,18 @@ if exam_file and seminar_file:
         exam_df = pd.read_csv(exam_file)
         seminar_df = pd.read_csv(seminar_file)
         
-        # Debug: Show file columns
-        with st.expander("Debug: File Columns"):
+        # Debug: Show file columns and sample data
+        with st.expander("Debug: File Columns and Sample Data"):
             st.write("**Exam file columns:**")
             st.write(exam_df.columns.tolist())
             st.write("**Seminar file columns:**")
             st.write(seminar_df.columns.tolist())
+            
+            # Show first few rows to see actual data
+            st.write("**First 3 rows of Exam file:**")
+            st.dataframe(exam_df.head(3))
+            st.write("**First 3 rows of Seminar file:**")
+            st.dataframe(seminar_df.head(3))
             
             # Check for email columns specifically
             st.write("**Email column detection:**")
@@ -26,15 +32,40 @@ if exam_file and seminar_file:
             found_emails = []
             for var in email_variations:
                 if var in exam_df.columns:
-                    found_emails.append(f"'{var}' found in EXAM file")
+                    # Show sample data from this column
+                    sample_data = exam_df[var].dropna().head(3).tolist()
+                    found_emails.append(f"'{var}' found in EXAM file - Sample: {sample_data}")
                 if var in seminar_df.columns:
-                    found_emails.append(f"'{var}' found in SEMINAR file")
+                    sample_data = seminar_df[var].dropna().head(3).tolist()
+                    found_emails.append(f"'{var}' found in SEMINAR file - Sample: {sample_data}")
             
             if found_emails:
                 for email_info in found_emails:
                     st.write(f"✅ {email_info}")
             else:
-                st.write("❌ No email columns found in either file")
+                st.write("❌ No standard email columns found")
+                
+                # Search for columns containing @tu-ilmenau.de
+                st.write("**Searching for @tu-ilmenau.de in all columns:**")
+                tu_email_found = False
+                for col in exam_df.columns:
+                    if exam_df[col].dtype == 'object':  # Only check text columns
+                        tu_emails = exam_df[col].astype(str).str.contains('@tu-ilmenau.de', na=False)
+                        if tu_emails.any():
+                            sample_emails = exam_df[col][tu_emails].head(3).tolist()
+                            st.write(f"✅ Found @tu-ilmenau.de emails in EXAM column '{col}': {sample_emails}")
+                            tu_email_found = True
+                
+                for col in seminar_df.columns:
+                    if seminar_df[col].dtype == 'object':
+                        tu_emails = seminar_df[col].astype(str).str.contains('@tu-ilmenau.de', na=False)
+                        if tu_emails.any():
+                            sample_emails = seminar_df[col][tu_emails].head(3).tolist()
+                            st.write(f"✅ Found @tu-ilmenau.de emails in SEMINAR column '{col}': {sample_emails}")
+                            tu_email_found = True
+                            
+                if not tu_email_found:
+                    st.write("❌ No @tu-ilmenau.de emails found in any column")
         
         # Gerekli sütunları kontrol et
         required_cols_exam = ["StudentID", "Rounded Exam Grades"]
@@ -84,31 +115,71 @@ if exam_file and seminar_file:
             else:
                 merged[col] = "N/A"
         
-        # Handle email column - prioritize exam file and check all variations
+        # Handle email column - search for @tu-ilmenau.de emails in all columns
         email_variations = ["E Mail", "Email", "E-Mail", "E-mail", "email", "EMAIL", "e-mail", "e_mail", "E_Mail"]
         email_found = False
         
-        # First try to get from exam file
+        # Method 1: Try standard email column names from exam file first
         for email_var in email_variations:
             if f"{email_var}_exam" in merged.columns:
-                merged["E Mail"] = merged[f"{email_var}_exam"]
-                email_found = True
-                st.write(f"📧 Email taken from exam file column: '{email_var}'")
-                break
+                # Filter for @tu-ilmenau.de emails only
+                tu_emails = merged[f"{email_var}_exam"].astype(str).str.contains('@tu-ilmenau.de', na=False)
+                if tu_emails.any():
+                    merged["E Mail"] = merged[f"{email_var}_exam"]
+                    email_found = True
+                    st.success(f"📧 Email taken from exam file column: '{email_var}' (@tu-ilmenau.de emails found)")
+                    break
         
-        # If not found in exam, try seminar file
+        # Method 2: If not found, search ALL columns in exam file for @tu-ilmenau.de
+        if not email_found:
+            for col in exam_df.columns:
+                if col != 'StudentID' and f"{col}_exam" in merged.columns:
+                    if merged[f"{col}_exam"].dtype == 'object':  # Only check text columns
+                        tu_emails = merged[f"{col}_exam"].astype(str).str.contains('@tu-ilmenau.de', na=False)
+                        if tu_emails.any():
+                            merged["E Mail"] = merged[f"{col}_exam"]
+                            email_found = True
+                            st.success(f"📧 Email found in exam file column: '{col}' (@tu-ilmenau.de emails detected)")
+                            break
+        
+        # Method 3: Try seminar file if still not found
         if not email_found:
             for email_var in email_variations:
                 if f"{email_var}_seminar" in merged.columns:
-                    merged["E Mail"] = merged[f"{email_var}_seminar"]
-                    email_found = True
-                    st.write(f"📧 Email taken from seminar file column: '{email_var}'")
-                    break
+                    tu_emails = merged[f"{email_var}_seminar"].astype(str).str.contains('@tu-ilmenau.de', na=False)
+                    if tu_emails.any():
+                        merged["E Mail"] = merged[f"{email_var}_seminar"]
+                        email_found = True
+                        st.info(f"📧 Email taken from seminar file column: '{email_var}' (@tu-ilmenau.de emails found)")
+                        break
+        
+        # Method 4: Search ALL columns in seminar file
+        if not email_found:
+            for col in seminar_df.columns:
+                if col != 'StudentID' and f"{col}_seminar" in merged.columns:
+                    if merged[f"{col}_seminar"].dtype == 'object':
+                        tu_emails = merged[f"{col}_seminar"].astype(str).str.contains('@tu-ilmenau.de', na=False)
+                        if tu_emails.any():
+                            merged["E Mail"] = merged[f"{col}_seminar"]
+                            email_found = True
+                            st.info(f"📧 Email found in seminar file column: '{col}' (@tu-ilmenau.de emails detected)")
+                            break
         
         # If still not found, set to N/A
         if not email_found:
             merged["E Mail"] = "N/A"
-            st.warning("⚠️ No email column found in either file")
+            st.error("⚠️ No @tu-ilmenau.de emails found in any column of either file")
+        
+        # Clean email column - only keep @tu-ilmenau.de emails, others set to N/A
+        if email_found:
+            merged["E Mail"] = merged["E Mail"].apply(
+                lambda x: x if (pd.notna(x) and '@tu-ilmenau.de' in str(x)) else "N/A"
+            )
+            
+            # Show how many valid emails we have
+            valid_emails = merged["E Mail"][merged["E Mail"] != "N/A"].count()
+            total_students = len(merged)
+            st.info(f"📊 Found {valid_emails} valid @tu-ilmenau.de emails out of {total_students} students")
         
         # Convert to numeric and check
         try:
