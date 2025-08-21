@@ -186,7 +186,7 @@ if exam_file and seminar_file:
         with col2:
             st.metric("Average Grade", f"{final_df['Total Grade'].mean():.2f}")
         with col3:
-            st.metric("Lowest Grade", f"{final_df['Total Grade'].min():.2f}")
+            st.metric("Highest Grade", f"{final_df['Total Grade'].min():.2f}")
         
         # Final tablo
         st.subheader("📊 Final Table")
